@@ -3580,6 +3580,157 @@ document.addEventListener("DOMContentLoaded",patch);setTimeout(patch,500);setTim
      NO cambia diseño, módulos, usuarios ni flujo visual.
      Insertar al final del body — después de todos los módulos.
 ════════════════════════════════════════════════════════════════ -->
+
+<!-- ═══ RESPONSIVE TABLET + MÓVIL — v1 ═══════════════════════ -->
+<style id="responsive-tablet-mobile-v1">
+
+/* ── TABLET landscape + iPad (780px – 1179px) ──────────────── */
+@media(max-width:1179px) and (min-width:781px){
+  /* Grids que en tablet siguen siendo 2/3 col innecesariamente */
+  .fr3{grid-template-columns:repeat(2,1fr)}
+  .fr4{grid-template-columns:repeat(2,1fr)}
+  .g3{grid-template-columns:repeat(2,1fr)}
+  /* Pagos: form + tarjeta alumno en columna */
+  #page-pagos .g2{grid-template-columns:1fr}
+  /* Cobrar y reportes: grids anchos */
+  .g2{grid-template-columns:1fr}
+  .split-32{grid-template-columns:1fr}
+  .erp-strip,.dash-focus{grid-template-columns:1fr}
+  /* Botones nunca cortados */
+  .actions{flex-wrap:wrap}
+  .actions .btn{flex:1;min-width:120px}
+  .card-hd{flex-wrap:wrap;gap:8px}
+  .card-hd h2,.card-hd h3{font-size:16px}
+  /* Modal footer apilado */
+  .mft{flex-wrap:wrap;gap:8px}
+  .mft .btn{flex:1;min-width:130px}
+  /* Tablas con scroll horizontal */
+  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  /* En tablet: usar tarjetas en vez de tabla (más touch-friendly) */
+  .desktop-table{display:none!important}
+  .mobile-cards{display:grid!important;gap:12px;grid-template-columns:repeat(2,1fr)}
+  /* Panel alumno en pagos */
+  .alu-kpis{grid-template-columns:repeat(2,1fr)}
+  /* Sección de configuración Firebase */
+  .firebase-stable-grid{grid-template-columns:repeat(2,1fr)}
+  /* ph (page header) */
+  .ph{flex-wrap:wrap;gap:10px}
+  .ph .actions{width:100%}
+  /* Botones xs en tarjetas: wrap */
+  .card .actions{flex-wrap:wrap;gap:6px}
+}
+
+/* ── MÓVIL + iPad portrait (≤ 780px) ──────────────────────── */
+@media(max-width:780px){
+  /* Asegurar que TODOS los grids sean 1 columna */
+  .fr2,.fr3,.fr4,.g2,.g3,.g4,.gauto,
+  .split-32,.erp-strip,.dash-focus,
+  .erp-kpis,.erp-mini-kpis{
+    grid-template-columns:1fr !important
+  }
+  /* Botones: siempre full-width apilados */
+  .actions{flex-direction:column;width:100%}
+  .actions .btn{width:100%;min-height:46px;font-size:14px}
+  /* Card headers */
+  .card-hd{flex-wrap:wrap;gap:8px}
+  .card-hd h2,.card-hd h3{font-size:15px}
+  /* Modal mejorado */
+  .mbox{max-height:96vh;border-radius:22px 22px 10px 10px}
+  .mft{flex-wrap:wrap;gap:8px;padding:12px}
+  .mft .btn{flex:1 1 calc(50% - 4px);min-width:100px;min-height:44px;font-size:13px}
+  .mbd{padding:14px}
+  /* Tablas scroll horizontal */
+  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+  table{min-width:520px}
+  /* Tarjeta alumno en pagos */
+  .alu-kpis{grid-template-columns:1fr 1fr}
+  .alu-row{grid-template-columns:90px 1fr;font-size:12px}
+  .alu-tbl{font-size:11px}
+  .alu-tbl th,.alu-tbl td{padding:4px 7px}
+  .alu-actions{flex-wrap:wrap;gap:6px}
+  .alu-actions .btn{flex:1;min-width:100px}
+  /* Page header */
+  .ph{flex-direction:column;gap:8px;align-items:flex-start}
+  .ph .actions{width:100%}
+  .ph h1{font-size:20px}
+  /* Steps de Pagos */
+  .step-card{padding:13px}
+  .step-card h3{font-size:15px}
+  /* Filtros: pills scrollables */
+  .pill-row{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px}
+  .pill-row::-webkit-scrollbar{height:4px}
+  /* Firebase panel config */
+  .firebase-stable-grid{grid-template-columns:1fr 1fr !important}
+  .firebase-stable-panel .actions{flex-wrap:wrap}
+  .firebase-stable-panel .actions .btn{flex:1;min-width:100px}
+  /* Alumnos: search row */
+  #page-alumnos .actions{flex-wrap:wrap}
+  /* Acuerdo de servicio: scale para caber en pantalla */
+  .agreement-sheet{
+    transform-origin:top left;
+    transform:scale(0.42);
+    margin-bottom:calc((1123px * 0.42) - 1123px + 0px);
+    margin-right:calc((794px * 0.42) - 794px)
+  }
+  /* KPIs dashboard */
+  .kpi{padding:14px}
+  /* Cobrar tabs scroll */
+  .cobrar-tabs{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  /* Notificaciones / alertas */
+  .notice{font-size:13px}
+  /* Quick access grid */
+  .quick-grid{grid-template-columns:1fr 1fr !important}
+}
+
+/* ── MÓVIL pequeño (≤ 480px) ──────────────────────────────── */
+@media(max-width:480px){
+  .main{padding-left:10px;padding-right:10px}
+  .card{padding:13px}
+  /* KPIs 1 columna */
+  .alu-kpis{grid-template-columns:1fr}
+  .quick-grid{grid-template-columns:1fr !important}
+  /* Modal casi pantalla completa */
+  .modal{padding:6px}
+  .mbox{max-height:98vh}
+  .mft .btn{flex:1 1 100%;min-height:46px}
+  /* Acuerdo scale más pequeño */
+  .agreement-sheet{
+    transform:scale(0.36);
+    margin-bottom:calc((1123px * 0.36) - 1123px);
+    margin-right:calc((794px * 0.36) - 794px)
+  }
+  /* Tabla: scroll más evidente */
+  .table-wrap::before{
+    content:'← desliza →';
+    display:block;
+    text-align:center;
+    font-size:11px;
+    color:#999;
+    padding:4px;
+    background:var(--bg2);
+    border-radius:6px 6px 0 0;
+  }
+  /* Botones acciones extra compactos */
+  .btn-xs{min-height:34px;padding:0 8px;font-size:11.5px}
+  /* Step cards Pagos */
+  .step-card{padding:11px}
+  /* Nav badge */
+  .nav-debt{font-size:10px}
+}
+
+/* ── Touch: áreas de tap más grandes ──────────────────────── */
+@media(hover:none) and (pointer:coarse){
+  .btn{min-height:46px}
+  .btn-xs{min-height:38px}
+  .nav-item{min-height:50px}
+  .inp,.sel{height:52px}
+  .dd-row{padding:13px 16px}  /* dropdown alumno */
+  select option{font-size:16px} /* evita zoom en iOS */
+}
+
+</style>
+<!-- ═══════════════════════════════════════════════════════════ -->
+
 <script id="firebase-unifier-v53-final">
 (function(){
   'use strict';
