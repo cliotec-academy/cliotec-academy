@@ -767,6 +767,38 @@ table th{
 .alumno-dd .dd-empty{padding:12px 16px;color:#999;font-size:13px}
 /* Botón acuerdo en modal alumno */
 .btn-acuerdo-modal{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px}
+
+/* ── Tarjeta completa del alumno en Registrar Pago ── */
+.alu-card{display:flex;flex-direction:column;gap:0}
+.alu-hd{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:14px 16px 10px;border-bottom:1px solid var(--bg3)}
+.alu-hd h3{margin:0 0 3px;font-size:16px;letter-spacing:-.02em}
+.alu-hd .alu-badges{display:flex;gap:5px;flex-wrap:wrap;margin-top:2px}
+.alu-rows{padding:10px 16px;display:flex;flex-direction:column;gap:0;border-bottom:1px solid var(--bg3)}
+.alu-row{display:grid;grid-template-columns:110px 1fr;align-items:center;padding:4px 0;font-size:12.5px;border-bottom:1px solid var(--bg3)}
+.alu-row:last-child{border-bottom:none}
+.alu-row span{color:var(--ct3);font-weight:600}
+.alu-row b,.alu-row a{font-weight:600;font-size:12.5px}
+.alu-row a{color:var(--ac);text-decoration:none}
+.alu-kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 16px;border-bottom:1px solid var(--bg3)}
+.alu-kpi{border-radius:12px;padding:8px 12px;background:var(--bg2);text-align:center}
+.alu-kpi b{display:block;font-size:15px;letter-spacing:-.02em;margin-bottom:1px}
+.alu-kpi span{font-size:10.5px;color:var(--ct3);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.alu-kpi.red{background:rgba(192,57,43,.08)} .alu-kpi.red b{color:#C0392B}
+.alu-kpi.orange{background:rgba(230,126,34,.08)} .alu-kpi.orange b{color:#D35400}
+.alu-kpi.green{background:rgba(39,174,96,.08)} .alu-kpi.green b{color:#1E8449}
+.alu-kpi.blue{background:rgba(41,128,185,.08)} .alu-kpi.blue b{color:#1A5276}
+.alu-kpi.gray{background:var(--bg2)} .alu-kpi.gray b{color:var(--ct2)}
+.alu-sub{padding:8px 16px 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--ct3)}
+.alu-tbl{width:100%;border-collapse:collapse;font-size:11.5px}
+.alu-tbl th{background:var(--bg2);color:var(--ct3);font-weight:700;text-align:left;padding:5px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em}
+.alu-tbl td{padding:5px 10px;border-bottom:1px solid var(--bg3);vertical-align:middle}
+.alu-tbl tr:last-child td{border-bottom:none}
+.alu-tbl .money{font-weight:700;color:var(--ct2)}
+.alu-tbl .red{color:#C0392B;font-weight:700}
+.alu-tbl-wrap{padding:0 0 4px;border-bottom:1px solid var(--bg3)}
+.alu-actions{display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px}
+.alu-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:36px 20px;color:var(--ct3);font-size:13px;text-align:center}
+.alu-empty svg{opacity:.3}
 </style>
 
 <style id="v47a-local-agreement">
@@ -1178,9 +1210,8 @@ table th{
             <div class="actions"><button class="btn btn-p" onclick="registrarPago()">Guardar pago y generar comprobante</button></div>
           </div>
         </div>
-        <div class="card">
-          <div class="card-hd"><h2>Resumen del alumno</h2><span class="bdg orange">Revisa antes de guardar</span></div>
-          <div id="pay-student-info" class="list"></div>
+        <div class="card" style="padding:0;overflow:hidden">
+          <div id="pay-student-info"></div>
         </div>
       </div>
     </section>
@@ -2055,17 +2086,79 @@ function cerrarDDAlumno(){const dd=$('pay-alumno-dd');if(dd){dd.className='alumn
 function renderPagosPage(){populateSelectors();if(!$('pay-fecha').value)$('pay-fecha').value=today();renderPagoAlumnoInfo()}
 function renderPagoAlumnoInfo(){
  const id=Number($('pay-alumno')?.value||0), a=alumno(id);
- if(!a){$('pay-student-info').innerHTML='<div class="empty">Selecciona un alumno para ver cargos y saldo.</div>';$('pay-cargo').innerHTML='<option value="">Sin cargos</option>';return}
+ /* Estado vacío */
+ if(!a){
+   $('pay-student-info').innerHTML=`<div class="alu-empty"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg><b>Ningún alumno seleccionado</b><span>Escribe un nombre arriba para buscar</span></div>`;
+   $('pay-cargo').innerHTML='<option value="">Sin cargos</option>';
+   return;
+ }
+ /* Datos base */
+ const g=grupo(a.grupoId);
  const pend=pendientesAlumno(id), ven=vencidosAlumno(id);
+ const saldoT=saldoAlumno(id), saldoV=saldoVencidoAlumno(id);
+ const proxV=proximoVencimientoAlumno(id);
+ const ultP=ultimoPagoAlumno(id);
+ const pagosRec=(pagosAlumno(id)||[]).slice(-5).reverse();
+ const dias=diasAtrasoAlumno(id);
+ /* Poblar select de cargos */
  $('pay-cargo').innerHTML=pend.length?pend.map((c,i)=>`<option value="${c.id}" ${i===0?'selected':''}>${esc(c.concepto)} · saldo ${money(c.saldo)} · vence ${fmtDate(c.fechaVencimiento)}</option>`).join(''):'<option value="">Sin cargos pendientes</option>';
- $('pay-student-info').innerHTML=`
- <div class="line-item"><span>Alumno</span><b>${esc(a.nombre)}</b></div>
- <div class="line-item"><span>Curso / grupo</span><b>${esc(cursoNombre(a.cursoId))}<br><span class="mini">${esc(grupoNombre(a.grupoId))}</span></b></div>
- <div class="line-item"><span>Saldo total</span><b class="money">${money(saldoAlumno(id))}</b></div>
- <div class="line-item"><span>Saldo vencido</span><b class="money">${money(saldoVencidoAlumno(id))}</b></div>
- <div class="line-item"><span>Cargos pendientes</span><b>${pend.length}</b></div>
- <div class="line-item"><span>Vencidos</span><b>${ven.length} · ${diasAtrasoAlumno(id)} días máx.</b></div>
- <div class="line-item"><span>Próximo vencimiento</span><b>${fmtDate(proximoVencimientoAlumno(id))}</b></div>`;
+ /* Color KPI saldo total */
+ const kpiSaldo=saldoV>0?'red':saldoT>0?'orange':'green';
+ const kpiVen=saldoV>0?'red':'gray';
+ /* Filas de cargos pendientes (máx 6) */
+ const cargoRows=pend.slice(0,6).map(c=>`<tr><td>${esc(c.concepto)}</td><td>${fmtDate(c.fechaVencimiento)}</td><td class="${c.estatus==='vencido'?'red':'money'}">${money(c.saldo)}</td><td>${badgeCargo(c)}</td></tr>`).join('');
+ /* Filas de últimos pagos */
+ const pagoRows=pagosRec.length?pagosRec.slice(0,5).map(p=>`<tr><td>${fmtDate(p.fecha)}</td><td class="money">${money(p.monto)}</td><td>${esc(p.metodo)}</td><td>${esc(p.concepto)}</td></tr>`).join(''):`<tr><td colspan="4" style="text-align:center;color:var(--ct3);padding:8px">Sin pagos registrados</td></tr>`;
+
+ $('pay-student-info').innerHTML=`<div class="alu-card">
+  <!-- Encabezado -->
+  <div class="alu-hd">
+    <div>
+      <h3>${esc(a.nombre)}</h3>
+      <div class="mini" style="margin-top:2px">${esc(a.matricula||'—')} · ${esc(cursoNombre(a.cursoId))}</div>
+    </div>
+    <div class="alu-badges">${badgeStatus(a.estatus)}${badgeFin(id)}</div>
+  </div>
+  <!-- Datos personales -->
+  <div class="alu-rows">
+    <div class="alu-row"><span>📱 WhatsApp</span><a href="${wa(a.telefono,'Hola '+a.nombre)}" target="_blank">${esc(a.telefono||'—')} ↗</a></div>
+    <div class="alu-row"><span>✉️ Email</span><b>${esc(a.email||'—')}</b></div>
+    <div class="alu-row"><span>🎓 Grupo</span><b>${esc(grupoNombre(a.grupoId)||'—')}</b></div>
+    <div class="alu-row"><span>👨‍🏫 Instructor</span><b>${esc(g?.instructor||'—')}</b></div>
+    <div class="alu-row"><span>🕐 Horario</span><b>${esc(g?.horario||'—')}</b></div>
+    <div class="alu-row"><span>📅 Inscripción</span><b>${fmtDate(a.fechaInscripcion||'—')}</b></div>
+    ${dias>0?`<div class="alu-row"><span>⚠️ Atraso</span><b style="color:#C0392B">${dias} días máx. vencido</b></div>`:''}
+  </div>
+  <!-- KPIs financieros -->
+  <div class="alu-kpis">
+    <div class="alu-kpi ${kpiSaldo}"><b>${money(saldoT)}</b><span>Saldo total</span></div>
+    <div class="alu-kpi ${kpiVen}"><b>${saldoV>0?money(saldoV):'Al corriente'}</b><span>Vencido</span></div>
+    <div class="alu-kpi blue"><b>${proxV?fmtDate(proxV):'—'}</b><span>Próx. vencimiento</span></div>
+    <div class="alu-kpi green"><b>${ultP?fmtDate(ultP.fecha):'Sin pagos'}</b><span>Último pago${ultP?' · '+money(ultP.monto):''}</span></div>
+  </div>
+  <!-- Cargos pendientes -->
+  <div class="alu-sub">Cargos pendientes (${pend.length}${ven.length>0?' · '+ven.length+' vencidos':''})</div>
+  <div class="alu-tbl-wrap">
+    <table class="alu-tbl">
+      <thead><tr><th>Concepto</th><th>Vence</th><th>Saldo</th><th>Est.</th></tr></thead>
+      <tbody>${cargoRows||'<tr><td colspan="4" style="text-align:center;color:var(--ct3);padding:8px">✅ Sin cargos pendientes</td></tr>'}</tbody>
+    </table>
+  </div>
+  <!-- Historial de pagos -->
+  <div class="alu-sub">Últimos pagos</div>
+  <div class="alu-tbl-wrap">
+    <table class="alu-tbl">
+      <thead><tr><th>Fecha</th><th>Monto</th><th>Método</th><th>Concepto</th></tr></thead>
+      <tbody>${pagoRows}</tbody>
+    </table>
+  </div>
+  <!-- Acciones rápidas -->
+  <div class="alu-actions">
+    <button class="btn btn-xs btn-ok" onclick="enviarRecordatorioWA(${id})">📱 WA recordatorio</button>
+    <button class="btn btn-xs btn-s" onclick="verDetalleAlumno(${id})">Ver detalle completo</button>
+    <button class="btn btn-xs btn-g" onclick="abrirModalAlumno(${id})">✏️ Editar alumno</button>
+  </div>
+ </div>`;
 }
 function registrarPago(){
  const alumnoId=Number($('pay-alumno').value), monto=Number($('pay-monto').value), fecha=$('pay-fecha').value, metodo=$('pay-metodo').value, tipo=$('pay-tipo').value, cargoPrioridad=Number($('pay-cargo').value||0), ref=$('pay-ref').value.trim(), notas=$('pay-notas').value.trim();
