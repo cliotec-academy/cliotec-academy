@@ -744,6 +744,30 @@ table th{
 }
 </style>
 
+<style id="pay-search-styles">
+/* Búsqueda de alumno en Registrar Pago */
+.pay-search-wrap{position:relative}
+.pay-search-wrap .alumno-dd{
+  position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:200;
+  background:#fff;border:1.5px solid var(--bg3);border-radius:14px;
+  max-height:240px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.13);
+  display:none
+}
+.pay-search-wrap .alumno-dd.open{display:block}
+.alumno-dd .dd-row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 16px;cursor:pointer;border-bottom:1px solid var(--bg3);
+  font-size:14px;transition:.12s
+}
+.alumno-dd .dd-row:last-child{border-bottom:none}
+.alumno-dd .dd-row:hover,.alumno-dd .dd-row.active{background:var(--ac);color:#fff;border-radius:0}
+.alumno-dd .dd-row:first-child:hover,.alumno-dd .dd-row:first-child.active{border-radius:12px 12px 0 0}
+.alumno-dd .dd-row:last-child:hover,.alumno-dd .dd-row:last-child.active{border-radius:0 0 12px 12px}
+.alumno-dd .dd-row .dd-curso{font-size:12px;opacity:.7}
+.alumno-dd .dd-empty{padding:12px 16px;color:#999;font-size:13px}
+/* Botón acuerdo en modal alumno */
+.btn-acuerdo-modal{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px}
+</style>
 
 <style id="v47a-local-agreement">
 /* V4.7A · Acuerdo local sin Storage */
@@ -1120,8 +1144,13 @@ table th{
           <div class="step-card">
             <span class="step-tag">Paso 1</span>
             <h3>Selecciona al alumno</h3>
-            <div class="fg"><label>Alumno *</label><select id="pay-alumno" class="sel" onchange="renderPagoAlumnoInfo()"></select></div>
-            <p class="compact-note">El sistema te mostrará saldo, cargos pendientes y vencimientos antes de cobrar.</p>
+            <div class="fg pay-search-wrap">
+              <label>Alumno *</label>
+              <input id="pay-alumno-search" class="inp" autocomplete="off" placeholder="Escribe el nombre del alumno…" oninput="filtrarAlumnosPago(this.value)" onfocus="filtrarAlumnosPago(this.value)" onblur="setTimeout(()=>cerrarDDAlumno(),180)">
+              <div id="pay-alumno-dd" class="alumno-dd"></div>
+              <input type="hidden" id="pay-alumno">
+            </div>
+            <p class="compact-note">Escribe las primeras letras del nombre y selecciona al alumno de la lista.</p>
           </div>
           <div class="step-card">
             <span class="step-tag">Paso 2</span>
@@ -1791,7 +1820,7 @@ function populateSelectors(){
  if($('al-grupo')) $('al-grupo').innerHTML=optsGroups('Todos los grupos',$('al-curso').value||'todos');
  if($('hist-grupo')) $('hist-grupo').innerHTML=optsGroups('Todos los grupos',$('hist-curso').value||'todos');
  if($('eval-group')) $('eval-group').innerHTML=optsGroups('Todos los grupos',$('eval-course').value||'todos');
- if($('pay-alumno')){$('pay-alumno').innerHTML=`<option value="">Selecciona alumno</option>`+state.alumnos.map(a=>`<option value="${a.id}">${esc(a.nombre)} · ${esc(cursoNombre(a.cursoId))}</option>`).join('')}
+ /* pay-alumno es ahora hidden — el dropdown lo maneja filtrarAlumnosPago */
 }
 function populateGrupoFilter(){if($('al-grupo'))$('al-grupo').innerHTML=optsGroups('Todos los grupos',$('al-curso').value||'todos')}
 function populateEvalGroup(){if($('eval-group'))$('eval-group').innerHTML=optsGroups('Todos los grupos',$('eval-course').value||'todos')}
@@ -1925,9 +1954,25 @@ function guardarAlumno(id){
    state.cargos.push({id:uid(state.cargos),alumnoId:newId,tipo:'inscripcion',concepto:'Inscripción',monto:Number(course?.inscripcion||0),fechaEmision:fecha,fechaVencimiento:fecha,montoPagado:0,saldo:Number(course?.inscripcion||0),estatus:diffDays(fecha)>0?'vencido':'pendiente',notas:'Cargo inicial'});
    state.cargos.push({id:uid(state.cargos),alumnoId:newId,tipo:'mensualidad',concepto:'Mensualidad '+mesNombre(due),monto:Number(course?.mensualidad||0),fechaEmision:due,fechaVencimiento:due,montoPagado:0,saldo:Number(course?.mensualidad||0),estatus:diffDays(due)>0?'vencido':'pendiente',notas:'Cargo inicial'});
    if(conversionProspectId){const p=state.prospectos.find(x=>x.id===conversionProspectId);if(p)p.estatus='inscrito';conversionProspectId=null;}
-   toast('Alumno creado con cargos iniciales.','success');
+   generarCargosPendientes();saveAll();renderAll();
+   ofrecerAcuerdoAlumno(newId);
+   return;
  }
  generarCargosPendientes();saveAll();closeModal();renderAll();
+}
+function ofrecerAcuerdoAlumno(id){
+ const a=alumno(id);if(!a)return;
+ openModal('¡Alumno inscrito! 🎉',`
+   <div class="notice"><b>${esc(a.nombre)}</b> fue inscrito en <b>${esc(cursoNombre(a.cursoId))}</b> — grupo <b>${esc(grupoNombre(a.grupoId))}</b>.<br>Se generaron los cargos iniciales de inscripción y primera mensualidad.</div>
+   <p style="margin:14px 0 4px;font-weight:600">¿Generar acuerdo de servicio ahora?</p>
+   <p style="font-size:13px;color:#666">Puedes descargarlo en PDF o generar el paquete completo (acuerdo + comprobante) listo para enviar por WhatsApp.</p>
+ `,`
+   <div class="btn-acuerdo-modal">
+     <button class="btn btn-g" onclick="closeModal()">Solo cerrar</button>
+     <button class="btn btn-ok" onclick="closeModal();descargarAcuerdoLocal(${id})">📄 Descargar acuerdo PDF</button>
+     <button class="btn btn-p" onclick="closeModal();generarDocumentacionLocal('${id}')">📱 Acuerdo + comprobante para WhatsApp</button>
+   </div>
+ `);
 }
 function eliminarAlumno(id){
  const a=alumno(id);if(!a)return;
@@ -1986,7 +2031,22 @@ function guardarCargoManual(alumnoId){
  state.cargos.push({id:uid(state.cargos),alumnoId,tipo:$('charge-type').value,concepto,monto,fechaEmision:emit,fechaVencimiento:due,montoPagado:0,saldo:monto,estatus:diffDays(due)>0?'vencido':'pendiente',notas:$('charge-notes').value.trim()});
  saveAll();closeModal();renderAll();verDetalleAlumno(alumnoId);toast('Cargo manual creado.','success')
 }
-function irPagoAlumno(id){closeModal();goPage('pagos');$('pay-alumno').value=id;renderPagoAlumnoInfo()}
+function irPagoAlumno(id){closeModal();goPage('pagos');const a=alumno(id);if(a&&$('pay-alumno-search')){$('pay-alumno-search').value=a.nombre;}if($('pay-alumno'))$('pay-alumno').value=id;renderPagoAlumnoInfo();}
+function filtrarAlumnosPago(q=''){
+  const dd=$('pay-alumno-dd');if(!dd)return;
+  const txt=normalizeTxt(q||'');
+  if(!txt){dd.className='alumno-dd';dd.innerHTML='';return}
+  const matches=state.alumnos.filter(a=>normalizeTxt(a.nombre).includes(txt)||(a.matricula&&normalizeTxt(String(a.matricula)).includes(txt))).slice(0,10);
+  if(!matches.length){dd.innerHTML='<div class="dd-empty">Sin resultados</div>';dd.className='alumno-dd open';return}
+  dd.innerHTML=matches.map(a=>`<div class="dd-row" onmousedown="seleccionarAlumnoPago(${a.id},this)">${esc(a.nombre)}<span class="dd-curso">${esc(cursoNombre(a.cursoId))}</span></div>`).join('');
+  dd.className='alumno-dd open';
+}
+function seleccionarAlumnoPago(id,el){
+  if($('pay-alumno'))$('pay-alumno').value=id;
+  if($('pay-alumno-search'))$('pay-alumno-search').value=alumno(id)?.nombre||'';
+  cerrarDDAlumno();renderPagoAlumnoInfo();
+}
+function cerrarDDAlumno(){const dd=$('pay-alumno-dd');if(dd){dd.className='alumno-dd';dd.innerHTML=''}}
 
 /* ════ PAGOS / COMPROBANTE ════ */
 function renderPagosPage(){populateSelectors();if(!$('pay-fecha').value)$('pay-fecha').value=today();renderPagoAlumnoInfo()}
@@ -2044,7 +2104,7 @@ function registrarPago(){
 }
 function nombreTipoPago(t){return ({mensualidad:'Pago de mensualidad',inscripcion:'Pago de inscripción',parcial:'Pago parcial',adelantado:'Pago adelantado',otro:'Otro concepto'})[t]||'Pago'}
 function nextAdvanceDue(alumnoId){const dates=cargosAlumno(alumnoId).filter(c=>c.tipo==='mensualidad').map(c=>c.fechaVencimiento).sort();return dates.length?addMonths(dates[dates.length-1],1):addMonths(today(),1)}
-function limpiarFormPago(){['pay-monto','pay-ref','pay-notas'].forEach(id=>$(id).value='');$('pay-fecha').value=today();renderPagoAlumnoInfo()}
+function limpiarFormPago(){['pay-monto','pay-ref','pay-notas'].forEach(id=>$(id).value='');$('pay-fecha').value=today();if($('pay-alumno'))$('pay-alumno').value='';if($('pay-alumno-search'))$('pay-alumno-search').value='';cerrarDDAlumno();renderPagoAlumnoInfo()}
 function generarComprobante(pagoId){
  const p=state.pagos.find(x=>x.id===pagoId), a=alumno(p?.alumnoId); if(!p||!a)return;
  const aplic=p.aplicaciones.map(ap=>`${esc(state.cargos.find(c=>c.id===ap.cargoId)?.concepto||'Aplicación libre')} · ${money(ap.montoAplicado)}`).join('<br>');
