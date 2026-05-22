@@ -2754,7 +2754,12 @@ window.addEventListener('DOMContentLoaded',()=>{
   }
 
   function getAlumnoByAnyId(id){
-    return (state.alumnos||[]).find(a=>String(a.id)===String(id) || String(a.matricula)===String(id));
+    /* PRIORIDAD: ID numérico primero — si hay alumno con matrícula igual al ID
+       nuevo, el find() lo devolvería antes (está al inicio del array).
+       Buscar por id exacto primero; solo si no coincide, buscar por matrícula. */
+    const byId = (state.alumnos||[]).find(a => String(a.id) === String(id));
+    if(byId) return byId;
+    return (state.alumnos||[]).find(a => a.matricula && String(a.matricula) === String(id));
   }
 
   function logoSrc(){
