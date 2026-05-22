@@ -1622,6 +1622,7 @@ const FB_STORAGE_KEY = 'cliotecFirebaseV4Config';
 const FB_MODE_KEY = 'cliotecFirebaseV4Mode';
 
 let state = loadAll();
+window.state = state; /* exponer para módulos Firebase */
 let conversionProspectId = null;
 
 const DEFAULT_USERS_V42 = [
@@ -1668,7 +1669,12 @@ function applyRoleUI(){
 function accessDeniedHTML(){return `<div class="access-denied"><h2>Acceso restringido</h2><p>Tu usuario no tiene permiso para entrar a esta sección en el modo actual.</p><button class="btn btn-p" onclick="goPage('dashboard')">Volver a Inicio</button></div>`}
 
 function loadAll(){try{const raw=localStorage.getItem(STORAGE_KEY);return raw?JSON.parse(raw):clone(DEMO)}catch(e){return clone(DEMO)}}
-function saveAll(){localStorage.setItem(STORAGE_KEY,JSON.stringify(state))}
+function saveAll(){
+  /* sync bidireccional: si Module 3 actualizó window.state, jalarlo de vuelta */
+  if(window.state && window.state !== state){ state = window.state; }
+  else { window.state = state; }
+  localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
+}
 function firebaseMode(){return localStorage.getItem(FB_MODE_KEY)==='firebase'}
 function setFbStatus(txt,cls='gray'){const a=$('fb-status'),b=$('fb-config-status'),c=$('fb-operation-summary'); if(a){a.textContent=txt;a.className='bdg '+cls} if(b){b.textContent=txt;b.className='bdg '+cls} if(c){c.textContent='Estado: '+txt}}
 function getFirebaseConfigFromForm(){return {apiKey:$('fb-apiKey')?.value.trim(),authDomain:$('fb-authDomain')?.value.trim(),projectId:$('fb-projectId')?.value.trim(),storageBucket:$('fb-storageBucket')?.value.trim(),messagingSenderId:$('fb-messagingSenderId')?.value.trim(),appId:$('fb-appId')?.value.trim()}}
@@ -1695,7 +1701,11 @@ function closeDrawer(){$('side').classList.remove('open');$('overlay').classList
 const PAGE_TITLES={dashboard:'Inicio',alumnos:'Alumnos',pagos:'Registrar Pago',historial:'Historial de Pagos',cobrar:'Cuentas por Cobrar',prospectos:'Prospectos',cursos:'Cursos y Grupos',ventas:'Ventas y Comisiones',nomina:'Nómina Docente',rentabilidad:'Rentabilidad por Grupo',reportes:'Reportes',finanzas:'Flujo Financiero',evaluaciones:'Evaluaciones',notificaciones:'Alertas',usuarios:'Usuarios y Roles',config:'Configuración'};
 function goPage(id){applyRoleUI(); if(!canAccessPage(id)){toast('Acceso restringido para tu usuario.','error'); id='dashboard';} document.querySelectorAll('.page').forEach(p=>p.classList.remove('show'));const page=$('page-'+id); if(page) page.classList.add('show');document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===id));$('top-title').textContent=PAGE_TITLES[id]||'Cliotec Academy';closeDrawer();renderPage(id);applyRoleUI()}
 function renderPage(id){({dashboard:renderDashboard,alumnos:renderAlumnos,pagos:renderPagosPage,historial:renderHistorial,cobrar:renderCobrar,prospectos:renderProspectos,cursos:renderCursos,ventas:renderVentas,nomina:renderNominaDocente,rentabilidad:renderRentabilidad,reportes:renderReportes,finanzas:renderFinanzas,evaluaciones:renderEvaluaciones,notificaciones:renderNotificaciones,usuarios:renderUsuarios,config:renderConfig}[id]||(()=>{}))()}
-function renderAll(){ensureDefaultUsersV42();populateSelectors();actualizarCargosEstado();$('nav-debt').textContent=debtors().length;const shown=document.querySelector('.page.show')?.id?.replace('page-','')||'dashboard';if(!canAccessPage(shown)){goPage('dashboard');return}renderPage(shown);applyRoleUI()}
+function renderAll(){
+  /* sync desde window.state si fue actualizado externamente (Module 3) */
+  if(window.state && window.state !== state){ state = window.state; }
+  ensureDefaultUsersV42();populateSelectors();actualizarCargosEstado();$('nav-debt').textContent=debtors().length;const shown=document.querySelector('.page.show')?.id?.replace('page-','')||'dashboard';if(!canAccessPage(shown)){goPage('dashboard');return}renderPage(shown);applyRoleUI()
+}
 function openTab(id,btn){const root=btn.closest('.page')||document;root.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));root.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));$(id).classList.add('active');btn.classList.add('active')}
 
 /* ════ CATÁLOGO / RELACIONES ════ */
