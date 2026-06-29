@@ -136,6 +136,7 @@ button{
   border-radius:14px;
   padding:13px 14px;
   outline:none;
+  background:white;
 }
 
 .btn{
@@ -398,6 +399,7 @@ button{
   border:1px solid var(--line);
   border-radius:14px;
   padding:12px 14px;
+  background:white;
 }
 
 .chip{
@@ -709,15 +711,102 @@ const DEFAULT = {
   ]
 };
 
-let state = load();
-let session = null;
-let view = "dashboard";
-let filter = "Todos";
-let tempAttendance = {};
+const DEMO_CREDENTIALS = {
+  austudio:"soporte2026",
+  admin:"cliotec2025",
+  ventas:"ventas2026",
+  roberto:"maestro2026"
+};
 
-window.state = state;
-window.session = session;
-window.APP_KEY = KEY;
+const roleNames = {
+  superadmin:"Super Admin",
+  admin:"Administrador",
+  ventas:"Ventas",
+  docente:"Docente"
+};
+
+function uid(prefix){
+  return prefix + Math.random().toString(36).slice(2,9);
+}
+
+function currentRoleFromUser(user){
+  const username = String(
+    user?.usuario ||
+    user?.username ||
+    user?.user ||
+    user?.email ||
+    ""
+  ).toLowerCase();
+
+  const rawRole = String(
+    user?.rol ||
+    user?.role ||
+    user?.tipo ||
+    user?.tipoUsuario ||
+    user?.perfil ||
+    user?.nivel ||
+    ""
+  ).toLowerCase();
+
+  if(username === "austudio") return "superadmin";
+  if(username === "admin") return "admin";
+  if(username === "ventas") return "ventas";
+  if(username === "roberto") return "docente";
+
+  if(rawRole.includes("super") || rawRole.includes("soporte")) return "superadmin";
+  if(rawRole.includes("admin")) return "admin";
+  if(rawRole.includes("venta") || rawRole.includes("promotor")) return "ventas";
+  if(rawRole.includes("docente") || rawRole.includes("maestro") || rawRole.includes("profesor")) return "docente";
+
+  return "admin";
+}
+
+function normalizeUser(user){
+  const username = String(
+    user?.usuario ||
+    user?.username ||
+    user?.user ||
+    user?.email ||
+    ""
+  ).toLowerCase();
+
+  const safePass =
+    user?.pass ||
+    user?.password ||
+    user?.contrasena ||
+    user?.contraseña ||
+    DEMO_CREDENTIALS[username] ||
+    "";
+
+  return {
+    ...user,
+    id:user?.id || username || uid("u"),
+    nombre:user?.nombre || user?.name || user?.displayName || username || "Usuario",
+    usuario:username,
+    pass:safePass,
+    rol:currentRoleFromUser(user),
+    activo:user?.activo !== false
+  };
+}
+
+function normalizeState(raw){
+  const base = structuredClone(DEFAULT);
+  const next = {...base, ...(raw || {})};
+
+  Object.keys(base).forEach(key=>{
+    if(!Array.isArray(next[key])){
+      next[key] = base[key];
+    }
+  });
+
+  next.users = next.users.map(normalizeUser);
+
+  if(!next.users.some(u=>u.usuario === "austudio")){
+    next.users.unshift(normalizeUser(DEFAULT.users[0]));
+  }
+
+  return next;
+}
 
 function load(){
   const raw = localStorage.getItem(KEY);
@@ -734,40 +823,15 @@ function load(){
   }
 }
 
-function save(){
-  localStorage.setItem(KEY,JSON.stringify(state));
-  window.state = state;
+let state = normalizeState(load());
+let session = null;
+let view = "dashboard";
+let filter = "Todos";
+let tempAttendance = {};
 
-  if(!window.__cliotecApplyingRemote && window.CliotecFirebase?.publishDebounced){
-    window.CliotecFirebase.publishDebounced();
-  }
-}
-
-function resetDemo(){
-  state = structuredClone(DEFAULT);
-  save();
-  toast("Datos demo restaurados");
-  render();
-}
-
-function uid(prefix){
-  return prefix + Math.random().toString(36).slice(2,9);
-}
-
-function money(n){
-  return Number(n || 0).toLocaleString("es-MX",{style:"currency",currency:"MXN"});
-}
-
-function by(list,id){
-  return state[list].find(x=>x.id === id);
-}
-
-const roleNames = {
-  superadmin:"Super Admin",
-  admin:"Administrador",
-  ventas:"Ventas",
-  docente:"Docente"
-};
+window.state = state;
+window.session = session;
+window.APP_KEY = KEY;
 
 const MENU = [
   {id:"dashboard",label:"Dashboard",group:"GENERAL",roles:["superadmin","admin","ventas","docente"]},
@@ -783,19 +847,66 @@ const MENU = [
   {id:"config",label:"Configuración",group:"ADMINISTRACIÓN",roles:["superadmin"]}
 ];
 
+function save(){
+  state = normalizeState(state);
+  localStorage.setItem(KEY,JSON.stringify(state));
+  window.state = state;
+
+  if(!window.__cliotecApplyingRemote && window.CliotecFirebase?.publishDebounced){
+    window.CliotecFirebase.publishDebounced();
+  }
+}
+
+function applyRemoteState(nextState){
+  state = normalizeState(nextState);
+  window.state = state;
+  localStorage.setItem(KEY,JSON.stringify(state));
+
+  if(session){
+    session = normalizeUser(session);
+    window.session = session;
+    render();
+  }
+}
+
+window.applyRemoteState = applyRemoteState;
+
+function resetDemo(){
+  state = normalizeState(structuredClone(DEFAULT));
+  save();
+  toast("Datos demo restaurados");
+  render();
+}
+
+function money(n){
+  return Number(n || 0).toLocaleString("es-MX",{style:"currency",currency:"MXN"});
+}
+
+function by(list,id){
+  return (state[list] || []).find(x=>x.id === id);
+}
+
+function currentRole(){
+  return currentRoleFromUser(session);
+}
+
 function allowed(item){
-  return item.roles.includes(session.rol);
+  return item.roles.includes(currentRole());
 }
 
 function filteredAlumnos(){
-  let data = [...state.alumnos];
+  let data = [...(state.alumnos || [])];
+  const role = currentRole();
 
-  if(session.rol === "ventas"){
-    data = data.filter(a=>a.promotorId === session.promotorId);
+  if(role === "ventas"){
+    data = data.filter(a=>a.promotorId === session.promotorId || session.usuario === "ventas");
   }
 
-  if(session.rol === "docente"){
-    const grupos = state.grupos.filter(g=>g.docenteId === session.docenteId).map(g=>g.id);
+  if(role === "docente"){
+    const grupos = (state.grupos || [])
+      .filter(g=>g.docenteId === session.docenteId || session.usuario === "roberto")
+      .map(g=>g.id);
+
     data = data.filter(a=>grupos.includes(a.grupoId));
   }
 
@@ -803,29 +914,29 @@ function filteredAlumnos(){
 }
 
 function filteredProspectos(){
-  let data = [...state.prospectos];
+  let data = [...(state.prospectos || [])];
 
-  if(session.rol === "ventas"){
-    data = data.filter(p=>p.promotorId === session.promotorId);
+  if(currentRole() === "ventas"){
+    data = data.filter(p=>p.promotorId === session.promotorId || session.usuario === "ventas");
   }
 
   return data;
 }
 
 function filteredGrupos(){
-  let data = [...state.grupos];
+  let data = [...(state.grupos || [])];
 
-  if(session.rol === "docente"){
-    data = data.filter(g=>g.docenteId === session.docenteId);
+  if(currentRole() === "docente"){
+    data = data.filter(g=>g.docenteId === session.docenteId || session.usuario === "roberto");
   }
 
   return data;
 }
 
 function filteredPagos(){
-  let data = [...state.pagos];
+  let data = [...(state.pagos || [])];
 
-  if(session.rol === "ventas"){
+  if(currentRole() === "ventas"){
     const ids = filteredAlumnos().map(a=>a.id);
     data = data.filter(p=>ids.includes(p.alumnoId));
   }
@@ -834,7 +945,7 @@ function filteredPagos(){
 }
 
 function asistenciaPct(id){
-  const rows = state.asistencias.filter(a=>a.alumnoId === id);
+  const rows = (state.asistencias || []).filter(a=>a.alumnoId === id);
 
   if(!rows.length){
     return 100;
@@ -907,8 +1018,7 @@ function loginTemplate(){
         <button class="btn" style="width:100%">Entrar al ERP</button>
       </form>
     </div>
-  </section>
-  `;
+  </section>`;
 }
 
 function login(e){
@@ -917,19 +1027,26 @@ function login(e){
   const user = document.getElementById("loginUser").value.trim().toLowerCase();
   const pass = document.getElementById("loginPass").value;
 
-  const found = state.users.find(u =>
-    u.usuario.toLowerCase() === user &&
-    u.pass === pass &&
-    u.activo
-  );
+  let found = (state.users || []).find(u=>{
+    const normalized = normalizeUser(u);
+
+    return normalized.usuario === user && (
+      String(normalized.pass) === pass ||
+      DEMO_CREDENTIALS[normalized.usuario] === pass
+    );
+  });
+
+  if(!found){
+    found = DEFAULT.users.find(u=>u.usuario.toLowerCase() === user && u.pass === pass);
+  }
 
   if(!found){
     toast("Usuario o contraseña incorrectos",true);
     return;
   }
 
-  session = found;
-  window.session = found;
+  session = normalizeUser(found);
+  window.session = session;
 
   view = "dashboard";
   render();
@@ -980,7 +1097,7 @@ function appTemplate(){
         <div>Clio Tec ERP<br><span style="opacity:.72;font-size:12px;letter-spacing:0">Academy V5</span></div>
       </div>
 
-      <div class="role">${session.nombre} · ${roleNames[session.rol]}</div>
+      <div class="role">${session.nombre || session.usuario} · ${roleNames[currentRole()]}</div>
 
       ${nav}
 
@@ -1006,14 +1123,13 @@ function appTemplate(){
 
           <button class="btn secondary sm" onclick="resetDemo()">Restaurar demo</button>
 
-          <div class="avatar">${session.nombre.charAt(0)}</div>
+          <div class="avatar">${(session.nombre || session.usuario || "U").charAt(0)}</div>
         </div>
       </header>
 
       <div class="content" id="view"></div>
     </main>
-  </section>
-  `;
+  </section>`;
 }
 
 function go(v){
@@ -1022,9 +1138,9 @@ function go(v){
   renderView();
 }
 
-function setTitle(t,s){
-  document.getElementById("title").textContent = t;
-  document.getElementById("subtitle").textContent = s;
+function setTitle(title,subtitle){
+  document.getElementById("title").textContent = title;
+  document.getElementById("subtitle").textContent = subtitle;
 }
 
 function renderView(){
@@ -1057,8 +1173,7 @@ function kpi(label,value,sub){
     <div class="kpiLabel">${label}</div>
     <div class="kpiValue">${value}</div>
     <div class="kpiSub">${sub}</div>
-  </div>
-  `;
+  </div>`;
 }
 
 function kpiAction(label,value,sub,type){
@@ -1067,8 +1182,7 @@ function kpiAction(label,value,sub,type){
     <div class="kpiLabel">${label}</div>
     <div class="kpiValue">${value}</div>
     <div class="kpiSub">${sub}</div>
-  </div>
-  `;
+  </div>`;
 }
 
 function dashboard(){
@@ -1097,7 +1211,8 @@ function dashboard(){
       </div>
 
       <div class="list">
-        ${state.timeline.slice(-6).reverse().map(t=>`
+        ${
+          (state.timeline || []).slice(-6).reverse().map(t=>`
           <div class="listItem dashboardLink" onclick="openTimelineDetail('${t.id}')">
             <div>
               <b>${t.tipo}</b>
@@ -1105,7 +1220,8 @@ function dashboard(){
             </div>
             <span class="muted">›</span>
           </div>
-        `).join("")}
+          `).join("") || `<div class="empty">Sin actividad reciente.</div>`
+        }
       </div>
     </div>
 
@@ -1139,8 +1255,7 @@ function dashboard(){
         `).join("")}
       </div>
     </div>
-  </div>
-  `;
+  </div>`;
 }
 
 function tableAlumnos(data){
@@ -1161,8 +1276,8 @@ function tableAlumnos(data){
       <tbody>
         ${data.map(a=>`
           <tr>
-            <td>${a.matricula}</td>
-            <td><b>${a.nombre}</b></td>
+            <td>${a.matricula || "-"}</td>
+            <td><b>${a.nombre || "-"}</b></td>
             <td>${by("cursos",a.cursoId)?.nombre || "-"}</td>
             <td>${by("grupos",a.grupoId)?.nombre || "-"}</td>
             <td>${badge(a.estado)}</td>
@@ -1172,8 +1287,7 @@ function tableAlumnos(data){
         `).join("")}
       </tbody>
     </table>
-  </div>
-  `;
+  </div>`;
 }
 
 function tablePagos(data){
@@ -1192,17 +1306,16 @@ function tablePagos(data){
       <tbody>
         ${data.map(p=>`
           <tr>
-            <td>${p.fecha}</td>
+            <td>${p.fecha || "-"}</td>
             <td>${by("alumnos",p.alumnoId)?.nombre || "-"}</td>
-            <td>${p.concepto}</td>
+            <td>${p.concepto || "-"}</td>
             <td><b>${money(p.monto)}</b></td>
             <td>${badge(p.estado)}</td>
           </tr>
         `).join("")}
       </tbody>
     </table>
-  </div>
-  `;
+  </div>`;
 }
 
 function openDashboardDetail(type){
@@ -1283,7 +1396,8 @@ function openDashboardDetail(type){
   if(type === "actividad"){
     openModal("Actividad reciente",`
       <div class="list">
-        ${state.timeline.slice().reverse().map(t=>`
+        ${
+          (state.timeline || []).slice().reverse().map(t=>`
           <div class="listItem dashboardLink" onclick="openTimelineDetail('${t.id}')">
             <div>
               <b>${t.tipo}</b>
@@ -1291,14 +1405,15 @@ function openDashboardDetail(type){
             </div>
             <span class="muted">›</span>
           </div>
-        `).join("")}
+          `).join("") || `<div class="empty">Sin actividad reciente.</div>`
+        }
       </div>
     `);
   }
 }
 
 function openTimelineDetail(id){
-  const item = state.timeline.find(t=>t.id === id);
+  const item = (state.timeline || []).find(t=>t.id === id);
   if(!item) return;
 
   const alumno = by("alumnos",item.alumnoId);
@@ -1319,7 +1434,7 @@ function openTimelineDetail(id){
 }
 
 function openPagoDetail(id){
-  const pago = state.pagos.find(p=>p.id === id);
+  const pago = (state.pagos || []).find(p=>p.id === id);
   if(!pago) return;
 
   const alumno = by("alumnos",pago.alumnoId);
@@ -1344,7 +1459,7 @@ function openPagoDetail(id){
 }
 
 function marcarPagadoDesdeModal(id){
-  const pago = state.pagos.find(p=>p.id === id);
+  const pago = (state.pagos || []).find(p=>p.id === id);
 
   if(pago){
     pago.estado = "Pagado";
@@ -1356,7 +1471,7 @@ function marcarPagadoDesdeModal(id){
 }
 
 function alumnos(){
-  setTitle(session.rol === "docente" ? "Mis alumnos" : "Alumnos","Ficha, asistencia, estados y seguimiento");
+  setTitle(currentRole() === "docente" ? "Mis alumnos" : "Alumnos","Ficha, asistencia, estados y seguimiento");
 
   const filters = ["Todos","Activo","Riesgo","Pausa","Egresado","Baja"];
   const data = filteredAlumnos().filter(a=>filter === "Todos" || a.estado === filter);
@@ -1365,7 +1480,7 @@ function alumnos(){
   <div class="card">
     <div class="head">
       <h2>Control de alumnos</h2>
-      ${session.rol !== "docente" ? `<button class="btn orange" onclick="openAlumnoModal()">Nuevo alumno</button>` : ""}
+      ${currentRole() !== "docente" ? `<button class="btn orange" onclick="openAlumnoModal()">Nuevo alumno</button>` : ""}
     </div>
 
     <div class="toolbar">
@@ -1396,8 +1511,8 @@ function alumnos(){
 
             return `
             <tr>
-              <td>${a.matricula}</td>
-              <td><b>${a.nombre}</b><br><span class="muted">${a.whatsapp}</span></td>
+              <td>${a.matricula || "-"}</td>
+              <td><b>${a.nombre || "-"}</b><br><span class="muted">${a.whatsapp || ""}</span></td>
               <td>${by("cursos",a.cursoId)?.nombre || "-"}</td>
               <td>${by("grupos",a.grupoId)?.nombre || "-"}</td>
               <td>${by("promotores",a.promotorId)?.nombre || "-"}</td>
@@ -1410,25 +1525,23 @@ function alumnos(){
                 <span class="muted">${pct}%</span>
               </td>
               <td><button class="btn secondary sm" onclick="openAlumnoFicha('${a.id}')">Ficha</button></td>
-            </tr>
-            `;
+            </tr>`;
           }).join("")}
         </tbody>
       </table>
     </div>
-  </div>
-  `;
+  </div>`;
 }
 
 function prospectos(){
-  setTitle(session.rol === "ventas" ? "Mis prospectos" : "Prospectos","Seguimiento comercial por promotor");
+  setTitle(currentRole() === "ventas" ? "Mis prospectos" : "Prospectos","Seguimiento comercial por promotor");
 
   const data = filteredProspectos();
 
   document.getElementById("view").innerHTML = `
   <div class="grid3">
     ${kpi("Prospectos",data.length,"Registros visibles")}
-    ${kpi("Estimado",money(data.reduce((s,p)=>s+p.montoEstimado,0)),"Valor comercial")}
+    ${kpi("Estimado",money(data.reduce((s,p)=>s+(Number(p.montoEstimado)||0),0)),"Valor comercial")}
     ${kpi("Seguimiento",data.filter(p=>p.etapa==="Seguimiento").length,"Contactos activos")}
   </div>
 
@@ -1454,11 +1567,11 @@ function prospectos(){
         <tbody>
           ${data.map(p=>`
             <tr>
-              <td><b>${p.nombre}</b></td>
-              <td>${p.whatsapp}</td>
-              <td>${p.cursoInteres}</td>
+              <td><b>${p.nombre || "-"}</b></td>
+              <td>${p.whatsapp || "-"}</td>
+              <td>${p.cursoInteres || "-"}</td>
               <td>${by("promotores",p.promotorId)?.nombre || "-"}</td>
-              <td>${p.origen}</td>
+              <td>${p.origen || "-"}</td>
               <td>${badge(p.etapa)}</td>
               <td>${money(p.montoEstimado)}</td>
             </tr>
@@ -1466,12 +1579,11 @@ function prospectos(){
         </tbody>
       </table>
     </div>
-  </div>
-  `;
+  </div>`;
 }
 
 function grupos(){
-  setTitle(session.rol === "docente" ? "Mis grupos" : "Grupos","Cursos, horarios, docentes y alumnos");
+  setTitle(currentRole() === "docente" ? "Mis grupos" : "Grupos","Cursos, horarios, docentes y alumnos");
 
   const data = filteredGrupos();
 
@@ -1480,7 +1592,7 @@ function grupos(){
     ${data.map(g=>`
       <div class="card">
         <div class="head">
-          <h2>${g.nombre}</h2>
+          <h2>${g.nombre || "-"}</h2>
           ${badge(g.estado)}
         </div>
 
@@ -1497,14 +1609,14 @@ function grupos(){
           <div class="listItem">
             <div>
               <b>Horario</b>
-              <div class="muted">${g.horario}</div>
+              <div class="muted">${g.horario || "-"}</div>
             </div>
           </div>
 
           <div class="listItem">
             <div>
               <b>Alumnos</b>
-              <div class="muted">${state.alumnos.filter(a=>a.grupoId === g.id).length} inscritos</div>
+              <div class="muted">${(state.alumnos || []).filter(a=>a.grupoId === g.id).length} inscritos</div>
             </div>
           </div>
         </div>
@@ -1514,8 +1626,7 @@ function grupos(){
         </button>
       </div>
     `).join("")}
-  </div>
-  `;
+  </div>`;
 }
 
 function asistencia(){
@@ -1571,8 +1682,7 @@ function asistencia(){
         : `<div class="empty">No hay alumnos visibles.</div>`
       }
     </div>
-  </div>
-  `;
+  </div>`;
 }
 
 function setAsistencia(id,estado,btn){
@@ -1590,6 +1700,11 @@ function guardarAsistencia(){
   const grupo = by("grupos",grupoId);
   const fecha = document.getElementById("fechaAsistencia").value;
   const alumnos = filteredAlumnos().filter(a=>a.grupoId === grupoId);
+
+  if(!grupo){
+    toast("Selecciona un grupo válido.",true);
+    return;
+  }
 
   alumnos.forEach(a=>{
     const estado = tempAttendance[a.id] || "Presente";
@@ -1618,7 +1733,7 @@ function guardarAsistencia(){
 }
 
 function pagos(){
-  setTitle(session.rol === "ventas" ? "Mis ingresos" : "Pagos","Pagos visibles según permisos");
+  setTitle(currentRole() === "ventas" ? "Mis ingresos" : "Pagos","Pagos visibles según permisos");
 
   const data = filteredPagos();
 
@@ -1632,18 +1747,17 @@ function pagos(){
   <div class="card" style="margin-top:20px">
     <div class="head">
       <h2>Registro de pagos</h2>
-      ${session.rol !== "docente" ? `<button class="btn orange" onclick="openPagoModal()">Nuevo pago</button>` : ""}
+      ${currentRole() !== "docente" ? `<button class="btn orange" onclick="openPagoModal()">Nuevo pago</button>` : ""}
     </div>
 
     ${tablePagos(data)}
-  </div>
-  `;
+  </div>`;
 }
 
 function cobranza(){
   setTitle("Cobranza","Alumnos vencidos y recuperación");
 
-  const vencidos = state.pagos.filter(p=>p.estado === "Vencido");
+  const vencidos = (state.pagos || []).filter(p=>p.estado === "Vencido");
 
   document.getElementById("view").innerHTML = `
   <div class="card">
@@ -1669,12 +1783,11 @@ function cobranza(){
         `).join("") || `<div class="empty">No hay cartera vencida.</div>`
       }
     </div>
-  </div>
-  `;
+  </div>`;
 }
 
 function marcarPagado(id){
-  const pago = state.pagos.find(p=>p.id === id);
+  const pago = (state.pagos || []).find(p=>p.id === id);
 
   if(pago){
     pago.estado = "Pagado";
@@ -1687,15 +1800,15 @@ function marcarPagado(id){
 function nomina(){
   setTitle("Nómina docente","Cálculo demo");
 
-  const rows = state.docentes.map(d=>{
-    const grupos = state.grupos.filter(g=>g.docenteId === d.id).length;
+  const rows = (state.docentes || []).map(d=>{
+    const grupos = (state.grupos || []).filter(g=>g.docenteId === d.id).length;
     const horas = grupos * 8;
 
     return {
       docente:d,
       grupos,
       horas,
-      total:horas * d.tarifaHora
+      total:horas * (Number(d.tarifaHora)||0)
     };
   });
 
@@ -1730,8 +1843,7 @@ function nomina(){
         </tbody>
       </table>
     </div>
-  </div>
-  `;
+  </div>`;
 }
 
 function reportes(){
@@ -1740,7 +1852,7 @@ function reportes(){
   const alumnos = filteredAlumnos();
   const pagos = filteredPagos();
 
-  const prom = Math.round(
+  const promedio = Math.round(
     alumnos.reduce((s,a)=>s+asistenciaPct(a.id),0) / (alumnos.length || 1)
   );
 
@@ -1748,7 +1860,7 @@ function reportes(){
   <div class="grid3">
     ${kpi("Alumnos visibles",alumnos.length,"Según rol")}
     ${kpi("Ingresos visibles",money(pagos.filter(p=>p.estado==="Pagado").reduce((s,p)=>s+p.monto,0)),"Según permisos")}
-    ${kpi("Asistencia promedio",prom + "%","Académico")}
+    ${kpi("Asistencia promedio",promedio + "%","Académico")}
   </div>
 
   <div class="card" style="margin-top:20px">
@@ -1760,8 +1872,7 @@ function reportes(){
     <p class="muted">
       Este reporte respeta permisos: ventas solo ve sus registros y docentes solo sus grupos/alumnos.
     </p>
-  </div>
-  `;
+  </div>`;
 }
 
 function exportCSV(){
@@ -1812,7 +1923,10 @@ function usuarios(){
           </tr>
         </thead>
         <tbody>
-          ${state.users.map(u=>`
+          ${(state.users || []).map(raw=>{
+            const u = normalizeUser(raw);
+
+            return `
             <tr>
               <td><b>${u.nombre}</b></td>
               <td>${u.usuario}</td>
@@ -1825,13 +1939,12 @@ function usuarios(){
                 : "-"
               }</td>
               <td>${u.activo ? "Sí" : "No"}</td>
-            </tr>
-          `).join("")}
+            </tr>`;
+          }).join("")}
         </tbody>
       </table>
     </div>
-  </div>
-  `;
+  </div>`;
 }
 
 function config(){
@@ -1871,8 +1984,7 @@ function config(){
         Restaurar demo local
       </button>
     </div>
-  </div>
-  `;
+  </div>`;
 }
 
 function filterTable(tableId,q){
@@ -1908,13 +2020,13 @@ function openAlumnoModal(){
 function saveAlumno(){
   const alumno = {
     id:uid("a"),
-    matricula:"CTA-" + String(state.alumnos.length + 1).padStart(4,"0"),
+    matricula:"CTA-" + String((state.alumnos || []).length + 1).padStart(4,"0"),
     nombre:val("nombre"),
     email:val("email"),
     whatsapp:val("whatsapp"),
     cursoId:val("cursoId"),
     grupoId:val("grupoId"),
-    promotorId:session.rol === "ventas" ? session.promotorId : val("promotorId"),
+    promotorId:currentRole() === "ventas" ? session.promotorId : val("promotorId"),
     estado:"Activo",
     financiero:"Al corriente",
     inscripcion:Number(val("inscripcion")),
@@ -1962,7 +2074,7 @@ function saveProspecto(){
     origen:val("origen"),
     montoEstimado:Number(val("montoEstimado")),
     etapa:"Nuevo",
-    promotorId:session.rol === "ventas" ? session.promotorId : val("promotorId")
+    promotorId:currentRole() === "ventas" ? session.promotorId : val("promotorId")
   });
 
   save();
@@ -2022,6 +2134,7 @@ function openUserModal(){
           <option value="ventas">Ventas</option>
           <option value="docente">Docente</option>
           <option value="admin">Admin</option>
+          <option value="superadmin">Super Admin</option>
         </select>
       </div>
 
@@ -2036,16 +2149,16 @@ function openUserModal(){
 function saveUser(){
   const rol = val("rol");
 
-  state.users.push({
+  state.users.push(normalizeUser({
     id:uid("u"),
     nombre:val("nombre"),
-    usuario:val("usuario"),
+    usuario:val("usuario").toLowerCase(),
     pass:val("pass"),
     rol,
     promotorId:rol === "ventas" ? val("promotorId") : undefined,
     docenteId:rol === "docente" ? val("docenteId") : undefined,
     activo:true
-  });
+  }));
 
   save();
   closeModal();
@@ -2055,10 +2168,15 @@ function saveUser(){
 
 function openAlumnoFicha(id){
   const alumno = by("alumnos",id);
+
+  if(!alumno){
+    return;
+  }
+
   const curso = by("cursos",alumno.cursoId)?.nombre || "-";
   const grupo = by("grupos",alumno.grupoId)?.nombre || "-";
-  const pagos = state.pagos.filter(p=>p.alumnoId === id);
-  const timeline = state.timeline.filter(t=>t.alumnoId === id);
+  const pagos = (state.pagos || []).filter(p=>p.alumnoId === id);
+  const timeline = (state.timeline || []).filter(t=>t.alumnoId === id);
 
   openModal("Ficha del alumno",`
     <div class="grid3">
@@ -2070,7 +2188,7 @@ function openAlumnoFicha(id){
     <div class="card" style="box-shadow:none;margin-top:16px">
       <h2>${alumno.nombre}</h2>
       <p class="muted">${alumno.matricula} · ${curso} · ${grupo}</p>
-      <p><b>WhatsApp:</b> ${alumno.whatsapp} · <b>Email:</b> ${alumno.email}</p>
+      <p><b>WhatsApp:</b> ${alumno.whatsapp || "-"} · <b>Email:</b> ${alumno.email || "-"}</p>
       <p><b>Notas:</b> ${alumno.notas || "-"}</p>
     </div>
 
@@ -2112,8 +2230,7 @@ function field(label,id,type="text",value=""){
   <div class="field">
     <label>${label}</label>
     <input id="${id}" type="${type}" value="${value}">
-  </div>
-  `;
+  </div>`;
 }
 
 function selectField(label,id,items){
@@ -2121,10 +2238,9 @@ function selectField(label,id,items){
   <div class="field">
     <label>${label}</label>
     <select id="${id}">
-      ${items.map(x=>`<option value="${x.id}">${x.nombre}</option>`).join("")}
+      ${(items || []).map(x=>`<option value="${x.id}">${x.nombre}</option>`).join("")}
     </select>
-  </div>
-  `;
+  </div>`;
 }
 
 function val(id){
@@ -2149,8 +2265,7 @@ function openModal(title,body){
     </div>
 
     ${body}
-  </div>
-  `;
+  </div>`;
 
   document.body.appendChild(div);
 }
@@ -2177,6 +2292,8 @@ window.render = render;
 window.renderView = renderView;
 window.toast = toast;
 window.save = save;
+window.normalizeState = normalizeState;
+window.normalizeUser = normalizeUser;
 
 render();
 </script>
@@ -2250,9 +2367,17 @@ function getLocalState(){
 
 function saveLocalState(nextState){
   try{
+    if(typeof window.applyRemoteState === "function"){
+      window.applyRemoteState(nextState);
+      return;
+    }
+
     window.state = nextState;
 
-    localStorage.setItem(window.APP_KEY || "cliotec_erp_v5_firebase", JSON.stringify(nextState));
+    localStorage.setItem(
+      window.APP_KEY || "cliotec_erp_v5_firebase",
+      JSON.stringify(nextState)
+    );
 
     if(typeof window.renderView === "function" && window.session){
       window.renderView();
@@ -2290,9 +2415,17 @@ function normalizeDoc(firebaseDoc){
   const data = firebaseDoc.data();
 
   return {
-    id: data.id ?? firebaseDoc.id,
+    id:data.id ?? firebaseDoc.id,
     ...data
   };
+}
+
+function normalizeRemoteRows(stateKey, rows){
+  if(stateKey === "users" && typeof window.normalizeUser === "function"){
+    return rows.map(window.normalizeUser);
+  }
+
+  return rows;
 }
 
 function stopRealtime(){
@@ -2322,11 +2455,11 @@ function startRealtime(){
 
   window.__cliotecFirebaseStarted = true;
 
-  setCloudBadge("Firebase realtime", "cloud");
+  setCloudBadge("Firebase realtime","cloud");
 
-  Object.entries(COLLECTION_MAP).forEach(([stateKey, collectionName])=>{
+  Object.entries(COLLECTION_MAP).forEach(([stateKey,collectionName])=>{
     const unsubscribe = onSnapshot(
-      collection(db, collectionName),
+      collection(db,collectionName),
       snapshot=>{
         if(window.__cliotecApplyingRemote){
           return;
@@ -2337,11 +2470,14 @@ function startRealtime(){
         }
 
         const currentState = getLocalState();
-        const remoteRows = snapshot.docs.map(normalizeDoc);
+        const remoteRows = normalizeRemoteRows(
+          stateKey,
+          snapshot.docs.map(normalizeDoc)
+        );
 
         const nextState = {
           ...currentState,
-          [stateKey]: remoteRows
+          [stateKey]:remoteRows
         };
 
         window.__cliotecApplyingRemote = true;
@@ -2350,10 +2486,10 @@ function startRealtime(){
       },
       error=>{
         console.error(`Error escuchando ${collectionName}:`, error);
-        setCloudBadge("Error Firebase", "error");
+        setCloudBadge("Error Firebase","error");
 
         if(typeof window.toast === "function"){
-          window.toast("Error de sincronización Firebase.", true);
+          window.toast("Error de sincronización Firebase.",true);
         }
       }
     );
@@ -2371,13 +2507,13 @@ async function uploadCurrentStateToFirebase(){
 
   const currentState = getLocalState();
 
-  setCloudBadge("Subiendo Firebase", "syncing");
+  setCloudBadge("Subiendo Firebase","syncing");
 
   stopRealtime();
 
   let total = 0;
 
-  for(const [stateKey, collectionName] of Object.entries(COLLECTION_MAP)){
+  for(const [stateKey,collectionName] of Object.entries(COLLECTION_MAP)){
     const rows = Array.isArray(currentState[stateKey])
       ? currentState[stateKey]
       : [];
@@ -2396,13 +2532,11 @@ async function uploadCurrentStateToFirebase(){
         `${stateKey}_${index}_${Date.now()}`
       );
 
-      const ref = doc(db, collectionName, safeId);
-
-      batch.set(ref, {
+      batch.set(doc(db,collectionName,safeId),{
         ...row,
-        id: row.id || safeId,
-        updatedAt: serverTimestamp()
-      }, { merge:true });
+        id:row.id || safeId,
+        updatedAt:serverTimestamp()
+      },{merge:true});
 
       total++;
     });
@@ -2410,14 +2544,14 @@ async function uploadCurrentStateToFirebase(){
     await batch.commit();
   }
 
-  await setDoc(doc(db, "sync_logs", "last_manual_upload"), {
-    tipo: "manual_upload",
+  await setDoc(doc(db,"sync_logs","last_manual_upload"),{
+    tipo:"manual_upload",
     total,
-    fecha: new Date().toISOString(),
-    updatedAt: serverTimestamp()
-  }, { merge:true });
+    fecha:new Date().toISOString(),
+    updatedAt:serverTimestamp()
+  },{merge:true});
 
-  setCloudBadge("Firebase realtime", "cloud");
+  setCloudBadge("Firebase realtime","cloud");
 
   if(typeof window.toast === "function"){
     window.toast(`Base subida a Firebase: ${total} registros.`);
@@ -2435,14 +2569,14 @@ function publishDebounced(){
     uploadCurrentStateToFirebase().catch(error=>{
       console.warn("No se autopublicó en Firebase:", error.message);
     });
-  }, 1400);
+  },1400);
 }
 
-async function clearCollection(db, collectionName){
+async function clearCollection(db,collectionName){
   let total = 0;
 
   while(true){
-    const snapshot = await getDocs(collection(db, collectionName));
+    const snapshot = await getDocs(collection(db,collectionName));
 
     if(snapshot.empty){
       break;
@@ -2452,7 +2586,7 @@ async function clearCollection(db, collectionName){
     const batch = writeBatch(db);
 
     docs.forEach(item=>{
-      batch.delete(doc(db, collectionName, item.id));
+      batch.delete(doc(db,collectionName,item.id));
     });
 
     await batch.commit();
@@ -2489,17 +2623,17 @@ async function clearFirebaseDatabase(){
     return 0;
   }
 
-  setCloudBadge("Limpiando Firebase", "syncing");
+  setCloudBadge("Limpiando Firebase","syncing");
 
   stopRealtime();
 
   let total = 0;
 
   for(const collectionName of ALL_FIREBASE_COLLECTIONS){
-    total += await clearCollection(db, collectionName);
+    total += await clearCollection(db,collectionName);
   }
 
-  setCloudBadge("Firebase vacío", "cloud");
+  setCloudBadge("Firebase vacío","cloud");
 
   if(typeof window.toast === "function"){
     window.toast(`Firebase limpiado: ${total} documentos eliminados.`);
@@ -2517,12 +2651,12 @@ async function testConnection(){
     throw new Error("Firebase no está listo.");
   }
 
-  await setDoc(doc(db, "sync_logs", "test_connection"), {
-    ok: true,
-    source: "cliotec_erp_v5_adapter",
-    fecha: new Date().toISOString(),
-    updatedAt: serverTimestamp()
-  }, { merge:true });
+  await setDoc(doc(db,"sync_logs","test_connection"),{
+    ok:true,
+    source:"cliotec_erp_v5_adapter",
+    fecha:new Date().toISOString(),
+    updatedAt:serverTimestamp()
+  },{merge:true});
 
   if(typeof window.toast === "function"){
     window.toast("Conexión Firebase correcta.");
@@ -2533,7 +2667,7 @@ async function testConnection(){
 
 async function initAutoFirebase(){
   try{
-    setCloudBadge("Conectando Firebase", "syncing");
+    setCloudBadge("Conectando Firebase","syncing");
 
     const app = getApps().length
       ? getApp()
@@ -2564,7 +2698,7 @@ async function initAutoFirebase(){
       serverTimestamp
     };
 
-    setCloudBadge("Firebase conectado", "cloud");
+    setCloudBadge("Firebase conectado","cloud");
 
     if(window.session){
       startRealtime();
@@ -2575,10 +2709,10 @@ async function initAutoFirebase(){
   }catch(error){
     console.error("Error inicializando Firebase:", error);
 
-    setCloudBadge("Firebase no conectado", "error");
+    setCloudBadge("Firebase no conectado","error");
 
     if(typeof window.toast === "function"){
-      window.toast("No se pudo conectar Firebase.", true);
+      window.toast("No se pudo conectar Firebase.",true);
     }
   }
 }
